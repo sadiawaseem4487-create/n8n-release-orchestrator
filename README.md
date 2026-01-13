@@ -1,131 +1,93 @@
 # n8n Release Orchestrator
 
-A reusable **n8n workflow** that generates **structured release notes** between two Git tags for a GitHub repository.  
-It enriches results using **GitHub PRs + linked GitHub Issues**, optionally enriches using **Jira issues**, and can optionally **post to Slack**.  
+A reusable **n8n workflow** that generates **release notes** between two Git tags for a GitHub repository.  
+It enriches the notes using **GitHub PRs + linked GitHub Issues**, optionally enriches using **Jira issues**, and can optionally **post the result to Slack**.  
 Release notes are produced by an **LLM-based agent** with a strict JSON output schema.
 
 ---
 
-## Repository contents
-
-| Path | Description |
-|---|---|
-| `workflows/ReleaseOrchestrator.json` | Exported n8n workflow (importable artifact) |
-| `examples/request.minimal.json` | Minimal webhook payload |
-| `examples/request.full.json` | Full webhook payload (Slack + Jira options) |
-
----
-
-## What we have achieved so far
+## What we have built so far
 
 This workflow automates release note generation end-to-end:
 
-1. Receives a **Webhook POST** request with `repo`, `fromTag`, `toTag`, and optional configuration.
-2. Calls **GitHub Compare API** to compute differences between tags.
-3. Extracts/normalizes:
-   - commits
-   - changed files
-   - PR numbers (associated with commits)
-   - Jira keys and GitHub issue references found in PR titles/bodies
-4. Fetches **PR details** and filters out noise (bots/release/changelog PRs).
-5. (Optional) Fetches **Jira issue details** and attaches them to related PRs.
-6. (Optional) Fetches **GitHub issue details** and attaches them to related PRs.
-7. Uses an **AI Agent** to generate:
-   - `releaseNotesMarkdown` (human-friendly)
-   - `releaseNotesJson` (structured categories + stats)
-   - `warnings` (missing data / low-confidence areas)
-8. Returns everything as a clean **Webhook response payload**.
-9. (Optional) Posts final release notes to **Slack**.
+- Compares two Git tags in GitHub
+- Collects commits and changed files
+- Discovers associated pull requests and enriches them with details
+- Extracts Jira keys and GitHub issue references from PR title/body
+- (Optional) Fetches Jira issue details and merges them back
+- (Optional) Fetches GitHub issue details and merges them back
+- Uses an AI Agent to produce:
+  - human-readable release notes (Markdown)
+  - structured release notes (JSON)
+  - warnings for missing/unclear data
+- (Optional) Posts final release notes to Slack
+- Returns a clean result payload from the workflow
 
 ---
 
-## Implemented components (workflow capabilities)
+## Implemented tools and integrations
 
-| Capability | What it does | Implementation notes |
+| Tool / Integration | Purpose | Status |
 |---|---|---|
-| Webhook trigger + request validation | Validates required inputs and normalizes option keys | Prevents missing/invalid requests early |
-| GitHub tag-range comparison | Compares `fromTag` → `toTag` | Uses GitHub REST compare endpoint |
-| Commit/file parsing | Normalizes commit list and file changes | Produces consistent internal data |
-| PR association | Finds PRs connected to commits | Improves reliability vs string parsing alone |
-| PR details enrichment | Fetches title/body/author/labels/etc. | Enables richer release notes |
-| PR filtering | Removes bot PRs and “release/changelog” PRs | Reduces noise in notes |
-| Ticket extraction | Extracts Jira keys + GitHub issue refs from PR text | Supports mixed conventions |
-| Jira enrichment (optional) | Fetches Jira issues and maps them back | Includes allow-list for project keys |
-| GitHub issue enrichment (optional) | Fetches issue details and maps them back | Adds context from issues |
-| AI release notes generation | Produces Markdown + strict JSON + warnings | Uses strict schema to reduce hallucination |
-| Slack posting (optional) | Sends final notes to Slack | Can be toggled via options |
-| Webhook response output | Returns clean JSON response | Designed for automation/CI usage |
+| GitHub (Compare API) | Identify changes between tags | ✅ Implemented |
+| GitHub (PR enrichment) | Fetch PR metadata, normalize, filter noise | ✅ Implemented |
+| GitHub (Issue enrichment) | Fetch linked issue details | ✅ Implemented |
+| Jira (optional) | Fetch issue details for extracted Jira keys | ✅ Implemented |
+| Slack (optional) | Post generated release notes | ✅ Implemented |
+| AI Agent (LLM) | Generate structured release notes (JSON + Markdown) | ✅ Implemented |
 
 ---
 
-## Integrations and credentials (required after import)
+## How to use this repository
 
-> Workflow exports do **not** include secrets. After importing, each user must configure credentials in n8n.
+### Import the workflow into n8n
+- Import the workflow JSON file:  
+  `workflows/ReleaseOrchestrator.json`
 
-| Integration | Required for | Where you configure it |
+You can import either from file or from a raw GitHub URL (recommended for easy reuse).
+
+---
+
+## Post-import setup (required)
+
+Workflow exports do **not** include secrets. After import, you must configure credentials in n8n:
+
+| Integration | What you must configure |
+|---|---|
+| GitHub | A GitHub credential/token with access to the target repository |
+| AI Model Provider | OpenAI (or equivalent) credential for the Chat Model used by the AI Agent |
+| Jira (optional) | Jira credential + your Jira base URL |
+| Slack (optional) | Slack credential + target channel/workspace settings |
+
+**Setup checklist**
+- [ ] Re-link GitHub credentials on GitHub-related nodes
+- [ ] Re-link AI model credentials for the AI Agent
+- [ ] If using Jira: configure Jira credentials and any project allowlist rules
+- [ ] If using Slack: configure Slack credentials and confirm posting destination
+- [ ] Run a test and validate the output
+
+---
+
+## Current limitations / changes to implement next
+
+| Area | Current state | Needed improvement |
 |---|---|---|
-| GitHub | Compare, PR fetch, issue fetch | Credentials on GitHub-related HTTP/GitHub nodes |
-| OpenAI (or other model provider) | AI release-note generation | Chat model node used by the AI Agent |
-| Jira (optional) | Jira issue enrichment | Jira node credentials |
-| Slack (optional) | Posting release notes | Slack node credentials |
+| Slack destination | May require manual adjustment after import | Make Slack posting fully driven by workflow input options |
+| Portability | Credentials must be re-linked after import | Add a short “first-run setup” guide (already included) |
+| Custom categorization | Categories depend mainly on agent output | Add label-based or repo-specific category mapping rules |
 
 ---
 
-## Quick start
+## Suggested next steps (roadmap)
 
-### 1) Import the workflow into n8n
-
-**Option A (Recommended): Import from URL**
-1. Open n8n
-2. Workflows → top-right menu (**…**) → **Import from URL**
-3. Paste the **Raw GitHub URL** of:  
-   `workflows/ReleaseOrchestrator.json`
-
-**Option B: Import from file**
-1. Download `workflows/ReleaseOrchestrator.json`
-2. In n8n → top-right menu (**…**) → **Import from File**
-
-### 2) Post-import setup checklist
-After import, open the workflow and do:
-
-- [ ] Configure **GitHub** credentials on all GitHub HTTP/GitHub tool nodes
-- [ ] Configure **OpenAI / LLM provider** credential for the Chat Model used by the AI Agent
-- [ ] If using Jira: configure **Jira** credentials and set your base URL
-- [ ] If posting to Slack: configure **Slack** credentials
-- [ ] Review any node fields that may be environment-specific (Slack channel, Jira base URL, etc.)
-- [ ] Enable the workflow
+- Make Slack destination fully dynamic (no hard-coded channel behavior)
+- Add a “dry run” mode (generate notes but skip Slack)
+- Improve classification using PR labels and conventional-commit patterns
+- Add validation tests for the JSON output schema
+- Add a “template” version for broader reuse
 
 ---
 
-## Webhook API
+## License
 
-### Endpoint
-After importing, open the **Webhook** node and copy the **Test** or **Production** URL.
-
-### Request schema
-
-| Field | Type | Required | Example |
-|---|---|---:|---|
-| `repo` | string (`owner/repo`) | ✅ | `octocat/Hello-World` |
-| `fromTag` | string | ✅ | `v1.2.0` |
-| `toTag` | string | ✅ | `v1.3.0` |
-| `options.postToSlack` | boolean | ❌ | `true` |
-| `options.slackChannel` | string | ❌ (required if posting) | `#release-notes` |
-| `options.jira.enabled` | boolean | ❌ | `true` |
-| `options.jira.baseUrl` | string | ❌ (required if Jira enabled) | `https://YOURDOMAIN.atlassian.net` |
-| `options.jira.allowedProjects` | string[] | ❌ | `["ABC","XYZ"]` |
-| `githubToken` | string | ❌ | `ghp_...` |
-
-> Note: Even if `githubToken` is supplied, users should still configure GitHub credentials in n8n unless you explicitly modify the workflow to use token-per-request headers.
-
----
-
-## Examples
-
-### Minimal request (`examples/request.minimal.json`)
-```json
-{
-  "repo": "owner/repo",
-  "fromTag": "v1.2.0",
-  "toTag": "v1.3.0"
-}
+Select a license in GitHub (MIT recommended if you want others to reuse easily).
