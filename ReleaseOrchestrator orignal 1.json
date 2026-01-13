@@ -1,0 +1,1808 @@
+{
+  "name": "ReleaseOrchestrator orignal 1",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cb19742f-6a6e-4da0-8f27-5907305d61c0",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -912,
+        -688
+      ],
+      "id": "9b92ee32-d84d-4ac6-a46d-2e1b2cb9eb31",
+      "name": "Webhook",
+      "webhookId": "cb19742f-6a6e-4da0-8f27-5907305d61c0"
+    },
+    {
+      "parameters": {
+        "jsCode": "// In n8n webhook, incoming JSON is typically in $json.body\nconst payload = $json.body ?? $json;\n\n// Validate required fields\nconst errors = [];\n\nif (!payload.repo || typeof payload.repo !== 'string' || !payload.repo.includes('/')) {\n  errors.push('repo is required and must be \"owner/repo\"');\n}\nif (!payload.fromTag || typeof payload.fromTag !== 'string') errors.push('fromTag is required');\nif (!payload.toTag || typeof payload.toTag !== 'string') errors.push('toTag is required');\n\nif (errors.length) {\n  return [{\n    json: {\n      ok: false,\n      status: 400,\n      errors,\n      input: payload,\n    }\n  }];\n}\n\n// ---------- OPTIONS (supports BOTH old style and new style) ----------\n\n// Read options object if provided, otherwise empty object\nconst opt = payload.options ?? {};\n\n// Slack: allow either payload.options.postToSlack OR payload.postToSlack\nconst postToSlack =\n  opt.postToSlack === true ||\n  opt.postToSlack === 'true' ||\n  payload.postToSlack === true ||\n  payload.postToSlack === 'true';\n\nconst slackChannelRaw =\n  opt.slackChannel ??\n  payload.slackChannel ??\n  payload.postToSlackChannel ??\n  null;\n\nconst slackChannel =\n  typeof slackChannelRaw === 'string' && slackChannelRaw.trim()\n    ? slackChannelRaw.trim()\n    : null;\n\n// If Slack posting requested, require channel\nif (postToSlack && !slackChannel) {\n  errors.push('options.slackChannel is required when options.postToSlack is true');\n}\n\n// Jira: allow either payload.options.jira or flat jira fields\nconst jiraObj = opt.jira ?? payload.jira ?? {};\n\nconst jiraEnabled =\n  jiraObj.enabled === true ||\n  jiraObj.enabled === 'true' ||\n  payload.jiraEnabled === true ||\n  payload.jiraEnabled === 'true';\n\nconst jiraBaseUrlRaw =\n  jiraObj.baseUrl ??\n  payload.jiraBaseUrl ??\n  payload.jiraDomain ??\n  null;\n\nconst jiraBaseUrl =\n  typeof jiraBaseUrlRaw === 'string' && jiraBaseUrlRaw.trim()\n    ? jiraBaseUrlRaw.trim()\n    : null;\n\nconst jiraAllowedProjects =\n  Array.isArray(jiraObj.allowedProjects) ? jiraObj.allowedProjects.filter(Boolean).map(String)\n  : Array.isArray(payload.jiraAllowedProjects) ? payload.jiraAllowedProjects.filter(Boolean).map(String)\n  : [];\n\n// GitHub token detection (optional)\nconst githubToken =\n  payload.githubToken ??\n  opt.githubToken ??\n  payload.token ??\n  null;\n\nconst githubTokenProvided =\n  typeof githubToken === 'string' && githubToken.trim().length > 0;\n\n// Final validation errors\nif (errors.length) {\n  return [{\n    json: {\n      ok: false,\n      status: 400,\n      errors,\n      input: payload,\n    }\n  }];\n}\n\nconst format = payload.format === 'json' ? 'json' : 'markdown';\n\n// ---------- OUTPUT ----------\nreturn [{\n  json: {\n    ok: true,\n    status: 200,\n    repo: payload.repo.trim(),\n    fromTag: payload.fromTag.trim(),\n    toTag: payload.toTag.trim(),\n    format,\n    // keep options structured\n    options: {\n      postToSlack,\n      slackChannel,\n      jira: {\n        enabled: jiraEnabled,\n        baseUrl: jiraBaseUrl,\n        allowedProjects: jiraAllowedProjects,\n      },\n      github: {\n        tokenProvidedInRequest: githubTokenProvided,\n      }\n    },\n    // pass token along if provided (so later GitHub HTTP nodes can use it)\n    githubToken: githubTokenProvided ? githubToken.trim() : null,\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -688,
+        -688
+      ],
+      "id": "1e493dcc-691b-4979-ae86-51d15130b4cd",
+      "name": "Validate Request"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c01df0d6-5812-49b3-a21e-68aa646c7cd9",
+              "leftValue": "={{$json.ok}}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -480,
+        -688
+      ],
+      "id": "77c97b5c-4560-4fa0-b7ac-95f559d2b3f4",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{$json.repo}}/compare/{{$json.fromTag}}...{{$json.toTag}}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -272,
+        -816
+      ],
+      "id": "c7b24d24-4834-46ef-9498-ef771980b910",
+      "name": "HTTP Request",
+      "credentials": {
+        "githubApi": {
+          "id": "8880IBLGmSZPJesF",
+          "name": "GitHub account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Parse Compare Output (NO hardcoded node names)\n * This prevents \"Referenced node doesn't exist\" errors.\n * Assumes this node receives:\n *  - compare API response as the main input json (recommended)\n *  - AND Validate Request fields are already merged earlier OR present on $json.base / $json\n */\n\n// If this Code node is \"Run once for all items\"\nconst item = $input.all()?.[0]?.json ?? $json;\n\n// Some flows pass compare response as item.compare, some pass it directly\nconst compare = item.compare?.html_url ? item.compare : item;\n\n// If compare is an error payload from GitHub\nif (compare?.message && !compare?.commits) {\n  return [{\n    json: {\n      ok: false,\n      stage: \"compare_api\",\n      error: \"GitHub compare returned an error\",\n      github: {\n        message: compare.message,\n        status: compare.status ?? null,\n        documentation_url: compare.documentation_url ?? null,\n      },\n      input: item,\n      rawCompare: compare,\n    }\n  }];\n}\n\nconst commitsArr = Array.isArray(compare.commits) ? compare.commits : [];\nconst filesArr = Array.isArray(compare.files) ? compare.files : [];\n\n// Normalize commits\nconst commits = commitsArr.map(c => ({\n  sha: c.sha ?? null,\n  message: c.commit?.message ?? \"\",\n  author: c.commit?.author?.name ?? c.author?.login ?? null,\n  date: c.commit?.author?.date ?? null,\n  url: c.html_url ?? null\n}));\n\n// Normalize files\nconst files = filesArr.map(f => ({\n  filename: f.filename ?? null,\n  status: f.status ?? null,\n  additions: f.additions ?? 0,\n  deletions: f.deletions ?? 0,\n  changes: f.changes ?? 0,\n}));\n\n// Extract PR numbers \"(#1234)\"\nconst prNumbers = new Set();\nfor (const c of commits) {\n  const m = (c.message || \"\").match(/\\(#(\\d+)\\)/g) || [];\n  m.forEach(x => prNumbers.add(x.replace(/[^\\d]/g, \"\")));\n}\n\n// Extract Jira keys \"ABC-123\"\nconst ticketPattern = /\\b([A-Z][A-Z0-9]+-\\d+)\\b/g;\nconst tickets = new Set();\nfor (const c of commits) {\n  const matches = (c.message || \"\").match(ticketPattern) || [];\n  matches.forEach(t => tickets.add(t));\n}\n\n// IMPORTANT: keep your existing fields if already present\nreturn [{\n  json: {\n    ...item, // preserves repo/fromTag/toTag/options if they were already added earlier\n    compareUrl: compare.html_url ?? null,\n    totalCommits: compare.total_commits ?? commits.length,\n    commits,\n    files,\n    prNumbers: Array.from(prNumbers),\n    tickets: Array.from(tickets),\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        -816
+      ],
+      "id": "26405d2a-bade-443c-85d6-b46343ea3e0d",
+      "name": "Parse Compare Output"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = items[0].json;\nconst commits = data.commits || [];\n\nconst prSet = new Set();\n\nfor (const c of commits) {\n  const msg = c?.message || \"\";\n  // Only the canonical PR merge pattern \"(#1234)\"\n  const matches = msg.match(/\\(#(\\d+)\\)/g) || [];\n  for (const m of matches) {\n    const pr = Number(m.replace(/[^\\d]/g, \"\"));\n    if (Number.isInteger(pr)) prSet.add(pr);\n  }\n}\n\nconst prs = [...prSet].sort((a, b) => a - b);\n\nif (!prs.length) {\n  return [{\n    json: {\n      repo: data.repo,\n      fromTag: data.fromTag,\n      toTag: data.toTag,\n      prNumbers: [],\n      note: \"No PR numbers found in commit messages using '(#NNNN)' pattern\"\n    }\n  }];\n}\n\nreturn prs.map(prNumber => ({\n  json: {\n    repo: data.repo,\n    fromTag: data.fromTag,\n    toTag: data.toTag,\n    prNumber\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        -816
+      ],
+      "id": "47535592-0f87-4845-bc8f-9f05e00c5e64",
+      "name": "Extract PR Numbers"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{$items(\"Validate Request\")[0].json.repo}}/pulls/{{$json.prNumber}}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1168,
+        -816
+      ],
+      "id": "09c2bd80-76fb-4322-9e5e-90721c077f9b",
+      "name": "HTTP Request1",
+      "credentials": {
+        "githubApi": {
+          "id": "8880IBLGmSZPJesF",
+          "name": "GitHub account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: items = array of PR objects\n// Output: single item with { repo, fromTag, toTag, prs: [...] }\n\nconst prs = items.map(i => i.json);\n\nconst repo = prs[0]?.base?.repo?.full_name || prs[0]?.head?.repo?.full_name;\nconst fromTag = $items(\"Extract PR Numbers\")[0].json.fromTag;\nconst toTag = $items(\"Extract PR Numbers\")[0].json.toTag;\n\nconst normalized = prs.map(pr => ({\n  number: pr.number,\n  title: pr.title,\n  url: pr.html_url,\n  author: pr.user?.login,\n  mergedAt: pr.merged_at,\n  isDraft: pr.draft,\n  labels: (pr.labels || []).map(l => l.name),\n  body: pr.body || \"\",\n}));\n\nreturn [{\n  json: { repo, fromTag, toTag, prs: normalized }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1472,
+        -688
+      ],
+      "id": "8abbd343-e0a2-4b64-a9c7-979d5d34d078",
+      "name": "Normalize PR Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = items[0].json;\n\nconst prs = (data.prs || []).filter(pr => {\n  const author = (pr.author || \"\").toLowerCase();\n  const title = (pr.title || \"\").toLowerCase();\n\n  // Remove bots and release PRs\n  const isBot = author.includes(\"bot\");\n  const isReleasePR = title.includes(\"release \") || title.includes(\"chore(main): release\");\n\n  return !(isBot || isReleasePR);\n});\n\nreturn [{\n  json: {\n    ...data,\n    prs\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16,
+        -400
+      ],
+      "id": "f2d8686d-30db-4fae-a8df-8ced19bb8b1c",
+      "name": "Filter PRs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = items[0].json;\nconst prs = data.prs || [];\n\nconst jiraKeyRegex = /\\b[A-Z][A-Z0-9]+-\\d+\\b/g;     // ABC-123\nconst ghIssueRegex = /#(\\d+)/g;                     // #2421\n\nfunction uniq(arr) { return [...new Set(arr.filter(Boolean))]; }\n\nconst enriched = prs.map(pr => {\n  const text = `${pr.title}\\n${pr.body || \"\"}`;\n\n  const jiraKeys = uniq((text.match(jiraKeyRegex) || []));\n  const ghIssues = uniq([...(text.matchAll(ghIssueRegex))].map(m => Number(m[1])));\n\n  return { ...pr, jiraKeys, ghIssues };\n});\n\nreturn [{\n  json: {\n    ...data,\n    prs: enriched,\n    extracted: {\n      jiraKeys: uniq(enriched.flatMap(p => p.jiraKeys)),\n      ghIssues: uniq(enriched.flatMap(p => p.ghIssues)),\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        -400
+      ],
+      "id": "1375dd91-46af-49e7-993e-f18098bb3369",
+      "name": "Extract Ticket IDs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = items[0].json;\n\nconst extracted = data.extracted || {};\nconst jiraKeys = (extracted.jiraKeys || []).filter(Boolean);\nconst ghIssues = (extracted.ghIssues || []).filter(n => Number.isInteger(n));\n\nreturn [{\n  json: {\n    ...data,\n    lookups: {\n      githubIssues: [...new Set(ghIssues)].sort((a,b)=>a-b),\n      jiraKeys: [...new Set(jiraKeys)].sort(),\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        -400
+      ],
+      "id": "fb9e4d56-c03e-47bb-bea0-89dd8e3897ff",
+      "name": "Prepare Ticket Lookups"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = items[0].json;\nconst issues = base.lookups?.githubIssues || [];\n\nif (!issues.length) {\n  return [{ json: { ...base, _issueLookup: { pending: [], results: [] } } }];\n}\n\n// one item per issue to fetch\nreturn issues.map(n => ({\n  json: {\n    repo: base.repo,\n    issueNumber: n,\n    _base: base\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        -400
+      ],
+      "id": "4941afcc-e028-4677-b543-dcd7ebf32112",
+      "name": "Split GitHub Issues"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{$json.repo}}/issues/{{$json.issueNumber}}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2768,
+        -176
+      ],
+      "id": "673f1131-b820-4cbd-b2ab-902826d99f61",
+      "name": "Get GitHub Issue",
+      "alwaysOutputData": true,
+      "credentials": {
+        "githubApi": {
+          "id": "8880IBLGmSZPJesF",
+          "name": "GitHub account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge GitHub Issue Details Back (robust to 404/permission/empty responses)\n\n// n8n gives you all incoming items to this node as $input.all()\nconst items = $input.all();\n\n// Always get the original full object from \"Prepare Ticket Lookups\"\nconst baseItem = $items(\"Prepare Ticket Lookups\")[0]?.json;\n\nif (!baseItem) {\n  throw new Error('Could not find data from \"Prepare Ticket Lookups\" node');\n}\n\n// If there were no issues to lookup, just pass through\nconst baseLookups = baseItem.lookups?.githubIssues || [];\nif (!baseLookups.length) {\n  return [{ json: baseItem }];\n}\n\n// Helper: determine if a GitHub API response is a real Issue object\nfunction isValidGitHubIssue(issue) {\n  // Real issues always have an integer number + html_url\n  return (\n    issue &&\n    Number.isInteger(issue.number) &&\n    typeof issue.html_url === \"string\" &&\n    typeof issue.title === \"string\"\n  );\n}\n\n// items here are the HTTP responses from GitHub Issues API\n// Some may be { message: \"Not Found\", ... } or error-shaped payloads\nconst rawIssues = items.map(i => i.json);\n\n// Keep only valid issues\nconst issueDetails = rawIssues\n  .filter(isValidGitHubIssue)\n  .map(issue => ({\n    number: issue.number,\n    title: issue.title,\n    url: issue.html_url,\n    state: issue.state || null,\n    labels: Array.isArray(issue.labels) ? issue.labels.map(l => l.name).filter(Boolean) : [],\n    body: issue.body || \"\"\n  }));\n\n// Count missing/failed lookups for warnings\nconst missingCount = baseLookups.length - issueDetails.length;\nconst warnings = Array.isArray(baseItem.warnings) ? [...baseItem.warnings] : [];\n\nif (missingCount > 0) {\n  warnings.push(\n    `${missingCount} GitHub issue(s) could not be fetched (404/permission/invalid issue number).`\n  );\n}\n\n// map for quick linking by issue number\nconst issueMap = {};\nfor (const it of issueDetails) issueMap[it.number] = it;\n\n// attach matched issues to each PR\nconst prs = (baseItem.prs || []).map(pr => {\n  const linked = (pr.ghIssues || [])\n    .map(n => issueMap[n])\n    .filter(Boolean);\n\n  return {\n    ...pr,\n    githubIssuesDetails: linked\n  };\n});\n\nreturn [{\n  json: {\n    ...baseItem,\n    warnings,\n    githubIssueDetails: issueDetails,\n    prs\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2960,
+        -1008
+      ],
+      "id": "d6c2f443-388b-4698-9254-41c094047a64",
+      "name": "Merge GitHub Issue Details Back"
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": "={{$json.status}}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -272,
+        -576
+      ],
+      "id": "c775510c-b9e5-4d38-a01d-ab2f366d29a8",
+      "name": "Respond Error"
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        5040,
+        -464
+      ],
+      "id": "b0f36dbf-baad-4470-b47e-743914b639de",
+      "name": "Respond Success"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{$json}}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=You are ReleaseNotesAgent.\n\nGoal\nGenerate production-ready release notes for a software release by analyzing the provided GitHub data between two tags (commits/PRs/issues already included in input).\n\nHard Rules (Non-negotiable)\n1) Use ONLY the input data. Do not invent PRs, issues, commits, labels, links, or changes.\n2) If information is missing or unclear, add a warning instead of guessing.\n3) Output MUST be valid JSON ONLY (no extra text, no markdown outside JSON).\n\n4) PR rule (IMPORTANT):\n   - If PRs are present in the input, every bullet MUST include PR number + PR URL.\n   - If PRs are NOT present in the input, DO NOT include PR info and DO NOT invent it.\n     In that case:\n       a) Either produce issue-based bullets (allowed), OR\n       b) Produce no bullets and add a warning explaining \"No PR data in input\".\n   - Never guess a PR from an issue number.\n\n5) Issue rule:\n   - If a linked GitHub issue is present in the input for a bullet, include it as:\n     [Issue #MMMM <Issue URL>]\n   - If no linked issue exists in input, omit the bracket completely.\n   - Never guess issue links.\n\nCategorization Rules\n- Categorize each change into exactly ONE of:\n  Features, Bug Fixes, Breaking Changes, Docs, Chore/Refactor, Dependencies, Security, Other.\n- Decide category using (in priority order):\n  a) PR labels (if available and clearly indicate type)\n  b) PR title keywords\n  c) PR body summary (ignore boilerplate templates/checklists)\n  d) Linked GitHub issue title/labels\n- Breaking Changes:\n  - Put a change under \"Breaking Changes\" ONLY if input explicitly indicates a breaking change\n    (keywords: \"breaking\", \"BREAKING CHANGE\", \"major\", \"incompatible\", \"removed\", \"renamed\", \"changed behavior\"),\n    OR labels strongly imply it.\n  - If you place anything under Breaking Changes, add a short reason in the bullet summary.\n- Security:\n  - If input mentions vulnerability/security advisory/CVE/dependabot security, categorize as Security.\n- Dependencies:\n  - Dependency upgrades/bumps belong in Dependencies unless explicitly security-related (then Security).\n- If none fits confidently, use Other and add a warning.\n\nMarkdown Output Rules (for releaseNotesMarkdown string)\n- Must start with: \"# Release Notes: <repo> <toTag>\"\n- Then include:\n  \"## Summary\" with 1–2 sentences.\n- Then headings in this exact order (include only if the category has at least 1 item):\n  ## Breaking Changes\n  ## Features\n  ## Bug Fixes\n  ## Security\n  ## Dependencies\n  ## Chore/Refactor\n  ## Docs\n  ## Other\n\nBullet formatting rules:\n- If PR data exists for the item:\n  - <summary> (PR #NNNN) <PR URL> [Issue #MMMM <Issue URL>]\n- If PR data does NOT exist but issue data exists for the item:\n  - <summary> [Issue #MMMM <Issue URL>]\n- If neither PR nor issue data exists for an item, do not create a bullet; add a warning.\n\n- Keep each bullet <= 200 characters when possible (without removing essential info).\n\nSummary Writing Rules\n- Bullets must be concise, factual, and understandable to a release note reader.\n- Do not include raw PR template checklists or long bodies.\n- Prefer action verbs (Fix, Add, Update, Improve, Remove).\n- If multiple items address same area, still list them separately.\n\nRequired Output JSON Schema (Return EXACTLY this shape)\n{\n  \"releaseNotesMarkdown\": \"string\",\n  \"releaseNotesJson\": {\n    \"title\": \"string\",\n    \"repo\": \"string\",\n    \"fromTag\": \"string\",\n    \"toTag\": \"string\",\n    \"stats\": { \"prs\": number, \"issues\": number },\n    \"categories\": {\n      \"Features\": [\n        {\n          \"summary\": \"string\",\n          \"pr\": { \"number\": number, \"url\": \"string\" },\n          \"issues\": [ { \"number\": number, \"url\": \"string\" } ]\n        }\n      ],\n      \"Bug Fixes\": [],\n      \"Breaking Changes\": [],\n      \"Docs\": [],\n      \"Chore/Refactor\": [],\n      \"Dependencies\": [],\n      \"Security\": [],\n      \"Other\": []\n    }\n  },\n  \"warnings\": [\"string\"]\n}\n\nSchema rules (IMPORTANT)\n- categories must contain all 8 keys exactly as listed.\n- If PRs are not present in input, set stats.prs = 0 and do NOT include any \"pr\" objects in items.\n  (If your system requires fixed schema objects, set item.pr = null instead of inventing values.)\n- stats.issues counts unique issues referenced.\n\nValidation Checklist (apply before returning)\n- JSON parses successfully.\n- categories contains all 8 keys exactly as listed.\n- stats.prs equals the number of PRs included across all categories (or 0 if none in input).\n- stats.issues equals unique issue count referenced across all bullets.\n- No hallucinations. Missing/unclear items go to warnings."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        3456,
+        -976
+      ],
+      "id": "0337d670-3884-4e7b-9d92-8db448d87713",
+      "name": "Generate Release Notes (AI Agent)"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 1200,
+          "temperature": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        3424,
+        -784
+      ],
+      "id": "de1da38b-5069-4200-8579-0c6ca83b602e",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "x0pDZQTZGwwzv3G0",
+          "name": "OpenAi account 9"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Agent JSON\n// Goal: ensure we always output a proper JSON object for Respond Success,\n// even if the agent returns JSON as a string in $json.output.\n\nfunction safeParse(maybeString) {\n  if (maybeString === null || maybeString === undefined) return null;\n  if (typeof maybeString === 'object') return maybeString;\n\n  const s = String(maybeString).trim();\n\n  // Sometimes the agent returns JSON inside code fences\n  const unfenced = s\n    .replace(/^```json\\s*/i, '')\n    .replace(/^```\\s*/i, '')\n    .replace(/\\s*```$/i, '')\n    .trim();\n\n  try {\n    return JSON.parse(unfenced);\n  } catch (e) {\n    return null;\n  }\n}\n\nconst raw = ($json && $json.output !== undefined) ? $json.output : $json;\n\n// If raw is already an object, keep it.\n// If raw is a string, try parse it.\n// If parsing fails, return a structured error.\nconst parsed = safeParse(raw);\n\nif (!parsed) {\n  return [{\n    json: {\n      ok: false,\n      error: \"Agent output is not valid JSON\",\n      rawType: typeof raw,\n      rawPreview: (typeof raw === 'string' ? raw.slice(0, 2000) : raw),\n    }\n  }];\n}\n\n// Some agents accidentally return an array like: [ { ... } ]\n// Normalize to the first element if so.\nconst normalized = Array.isArray(parsed) ? parsed[0] : parsed;\n\nreturn [{ json: normalized }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3648,
+        -560
+      ],
+      "id": "0e384d66-a49d-4b31-85db-50fa44fecaad",
+      "name": "Parse Agent JSON"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = items[0].json;\nconst commits = base.commits || [];\n\nif (!commits.length) return [{ json: { ...base, _commitShas: [] } }];\n\nreturn commits.map(c => ({\n  json: {\n    repo: base.repo,\n    sha: c.sha,\n    _base: base\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -816
+      ],
+      "id": "56939896-34cc-4de2-b6ec-e2f7e08acf85",
+      "name": "Split Commits"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{$items(\"Validate Request\")[0].json.repo}}/commits/{{$json.sha}}/pulls",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github.groot-preview+json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        528,
+        -816
+      ],
+      "id": "bcd6133c-a0f3-42a6-8047-8bc5f2d32338",
+      "name": "Get PRs For Commit",
+      "credentials": {
+        "githubApi": {
+          "id": "8880IBLGmSZPJesF",
+          "name": "GitHub account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const baseItem = $items(\"Parse Compare Output\")[0].json;\n\nconst prNums = new Set();\nfor (const it of items) {\n  const prs = Array.isArray(it.json) ? it.json : [];\n  for (const pr of prs) {\n    if (Number.isInteger(pr.number)) prNums.add(pr.number);\n  }\n}\n\nreturn [{\n  json: {\n    ...baseItem,\n    prNumbers: [...prNums].sort((a,b)=>a-b),\n    prSource: \"commit_associations\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        -816
+      ],
+      "id": "3d83e69d-151f-4985-be28-c8ecd47954b8",
+      "name": "Merge Associated PRs"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split Jira tickets into individual items for looping.\n// This does NOT break your existing pipeline because we keep a copy of the \"base\" input.\n\nconst base = $input.first().json;\n\n// Where are your Jira keys stored?\n// Use whichever exists in your data:\nconst jiraKeys =\n  base.jiraKeys ||\n  base.tickets ||          // you currently use \"tickets\" for keys like ABC-123\n  base.extracted?.jiraKeys ||\n  [];\n\n// If no Jira keys, pass through one item with empty jiraIssues\nif (!Array.isArray(jiraKeys) || jiraKeys.length === 0) {\n  return [{\n    json: {\n      ...base,\n      jiraIssues: [],        // important: always present\n      jiraLookupSkipped: true\n    }\n  }];\n}\n\n// Create 1 item per Jira key. We keep original data in `base` so it’s never lost.\nreturn jiraKeys.map(key => ({\n  json: {\n    base,   // full original object\n    key     // Jira key for this item\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        -512
+      ],
+      "id": "369a78ce-cc95-4c3b-ae3a-44977ee2e98a",
+      "name": "Split Jira Tickets"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "issueKey": "={{$json.jiraKey}}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        1776,
+        -672
+      ],
+      "id": "40c94776-743a-450e-a675-00825d446742",
+      "name": "Get Jira Issue1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "HRQh8IXuQ3ecfELv",
+          "name": "Jira SW Cloud account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect Jira issue responses back into ONE item with `jiraIssues: []`\n// Production-safe: always returns { json: ... } and always preserves the base payload.\n\nconst items = $input.all();\n\n// ---- Helper: identify the \"base\" payload (the object that contains repo/prs/lookups/etc.) ----\nfunction extractBase(obj) {\n  // Most common shape from Split Jira Tickets: { base: { ... }, key: \"ABC-123\", ... }\n  if (obj && typeof obj === \"object\" && obj.base && typeof obj.base === \"object\") return obj.base;\n\n  // Disabled branch / no-split scenarios: base is the object itself\n  return obj && typeof obj === \"object\" ? obj : {};\n}\n\n// Pick base from the first item\nconst firstJson = items?.[0]?.json ?? {};\nconst base = extractBase(firstJson);\n\n// ---- Helper: Jira base URL (supports new options.jira.baseUrl + legacy fields) ----\nfunction getJiraBaseUrl(b) {\n  const raw =\n    b?.options?.jira?.baseUrl || // <-- preferred (your Validate Request stores it here)\n    b?.jiraBaseUrl ||\n    b?.jiraDomain ||\n    b?.jiraUrl ||\n    \"\";\n\n  if (!raw) return null;\n  return String(raw).replace(/\\/$/, \"\");\n}\n\nconst jiraBase = getJiraBaseUrl(base);\n\n// ---- Helper: normalize Jira issue from different node outputs ----\nfunction normalizeJiraIssue(itemJson) {\n  // itemJson may be:\n  // - { base, key, jiraKey, ... , fields... }  (split flow)\n  // - Jira node output: { id, key, fields: {...} }\n  // - HTTP output: { issue: {...} } or { data: {...} }\n  const payload = itemJson?.issue ?? itemJson?.data ?? itemJson ?? {};\n\n  const key = payload?.key || payload?.json?.key || itemJson?.jiraKey || itemJson?.key || null;\n  const fields = payload?.fields || payload?.json?.fields || {};\n\n  return {\n    key,\n    summary: fields?.summary ?? null,\n    type: fields?.issuetype?.name ?? null,\n    status: fields?.status?.name ?? null,\n    priority: fields?.priority?.name ?? null,\n    labels: Array.isArray(fields?.labels) ? fields.labels : [],\n    url: jiraBase && key ? `${jiraBase}/browse/${key}` : null,\n  };\n}\n\n// ---- If Jira was explicitly skipped (disabled branch), ensure consistent output shape ----\n// Your disabled branch item is already the base object (no {base:...} wrapper).\n// We still ensure jiraIssues exists and return ONE {json:{...}} item.\nif (items.length === 1 && items[0]?.json?.jiraLookupSkipped) {\n  const j = items[0].json;\n  return [{\n    json: {\n      ...j,\n      jiraIssues: Array.isArray(j.jiraIssues) ? j.jiraIssues : [],\n    }\n  }];\n}\n\n// ---- Build + de-dupe Jira issues by key ----\nconst map = new Map();\nfor (const it of items) {\n  const normalized = normalizeJiraIssue(it?.json);\n  if (normalized.key && !map.has(normalized.key)) {\n    map.set(normalized.key, normalized);\n  }\n}\n\nconst jiraIssues = Array.from(map.values());\n\n// ---- Return ONE merged item in correct n8n format ----\nreturn [{\n  json: {\n    ...base,\n    jiraIssues,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        -816
+      ],
+      "id": "c0331434-f87c-4b3d-b3e7-d489702648bc",
+      "name": "Collect Jira Issues Back"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize Jira Issue\n// Works even if Jira node failed (404 etc). No $credentials usage.\n\nconst j = $json;\n\n// Try to find baseUrl from the workflow payload\nconst jiraBase =\n  j?.base?.jiraBaseUrl ||\n  j?.base?.jiraDomain ||\n  j?.base?.jiraUrl ||\n  j?.jiraBaseUrl ||\n  j?.jiraDomain ||\n  j?.jiraUrl ||\n  j?.base?.jira?.baseUrl ||\n  j?.jira?.baseUrl ||\n  \"\";\n\nconst cleanBase = jiraBase ? String(jiraBase).replace(/\\/$/, \"\") : \"\";\n\n// If Jira node failed, it may output an error structure or missing fields.\n// Guard everything so this node never crashes.\nconst key = j?.key || j?.issue?.key || j?.data?.key || null;\nconst fields = j?.fields || j?.issue?.fields || j?.data?.fields || {};\n\nreturn [{\n  key,\n  id: j?.id || null,\n  self: j?.self || null,\n  summary: fields?.summary ?? null,\n  description: fields?.description ?? null,\n  issueType: fields?.issuetype?.name ?? null,\n  status: fields?.status?.name ?? null,\n  priority: fields?.priority?.name ?? null,\n  project: fields?.project?.key ?? null,\n  labels: Array.isArray(fields?.labels) ? fields.labels : [],\n  components: Array.isArray(fields?.components) ? fields.components.map(c => c?.name).filter(Boolean) : [],\n  assignee: fields?.assignee?.displayName ?? null,\n  reporter: fields?.reporter?.displayName ?? null,\n  created: fields?.created ?? null,\n  updated: fields?.updated ?? null,\n  url: key && cleanBase ? `${cleanBase}/browse/${key}` : null,\n\n  // Helpful flags (optional)\n  jiraLookupFailed: !!j?.errorMessage,\n  jiraError: j?.errorMessage || null,\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1984,
+        -672
+      ],
+      "id": "8b31301e-4081-42d1-9b05-8b27f910d360",
+      "name": "Normalize Jira Issue"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter Jira keys, but never stop the workflow.\n// Uses request-configured allowedProjects from \"Validate Request\".\n// Policy: if allowedProjects is empty or missing => ALLOW ALL projects (recommended default).\n\n// Pull allowedProjects from the validated request (if present)\nconst cfgAllowed = $items(\"Validate Request\")?.[0]?.json?.options?.jira?.allowedProjects;\n\n// Normalize allowlist to uppercase strings\nconst allowedProjects = Array.isArray(cfgAllowed)\n  ? cfgAllowed.map(p => String(p).trim().toUpperCase()).filter(Boolean)\n  : [];\n\n// Detect key field from upstream nodes (Set Jira Key / Split Jira Tickets)\nconst key = $json.jiraKey || $json.key || null;\n\n// If there is NO Jira key at all, pass through with a skip marker\nif (!key) {\n  return [{\n    ...$json,\n    jiraLookupSkipped: true,\n    jiraSkipReason: \"no_key\",\n  }];\n}\n\nconst project = String(key).split(\"-\")[0].toUpperCase();\n\n// If allowlist is provided and project is not in it => skip lookup but still pass through\nif (allowedProjects.length > 0 && !allowedProjects.includes(project)) {\n  return [{\n    ...$json,\n    jiraLookupSkipped: true,\n    jiraSkipReason: \"project_not_allowed\",\n  }];\n}\n\n// Jira key is allowed => allow Jira node(s) to run\nreturn [{\n  ...$json,\n  jiraLookupSkipped: false,\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        -992
+      ],
+      "id": "499c7dcc-a3c3-469d-8ff9-79e8e1d6f8f7",
+      "name": "Filter Jira Keys",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "90d3011b-f20a-4ca6-a65d-ca7696b78b5b",
+              "name": "=jiraKey",
+              "value": "={{$json.key || $json.base?.key || null}}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1296,
+        -496
+      ],
+      "id": "0187f548-fe8f-4d82-a598-1d26324e140f",
+      "name": "Set Jira Key"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "21e90d88-2153-41fe-b172-1438c377d169",
+              "leftValue": "={{$json.jiraLookupSkipped}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1696,
+        -992
+      ],
+      "id": "ab1f0fd7-9bcd-429f-92b2-eeb5dd1462c1",
+      "name": "IF: jiraLookupSkipped?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize and validate GitHub issue number safely\n\nconst issueNumberRaw =\n  $json.issueNumber ??\n  $json.number ??\n  $json.ghIssue ??\n  null;\n\nconst n = Number(String(issueNumberRaw ?? \"\").replace(/[^\\d]/g, \"\"));\n\nif (!Number.isInteger(n) || n <= 0) {\n  return [{\n    json: {\n      ...$json,\n      githubIssueLookupSkipped: true,\n      githubIssueSkipReason: \"Invalid or missing GitHub issue number\"\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...$json,\n    issueNumber: n,\n    githubIssueLookupSkipped: false\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2512,
+        -864
+      ],
+      "id": "b43823a0-fca6-4a6b-a98d-44b1b79988e4",
+      "name": "Filter GitHub Issue Number"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "bb13f41a-11b1-430a-9ef2-c219bfad63c5",
+              "leftValue": "={{$json.githubIssueLookupSkipped}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2592,
+        -544
+      ],
+      "id": "cda24ea0-f878-49c3-bd5a-3f2b896973a0",
+      "name": "If:githubIssueLookupSkipped?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "878ec0b8-8de3-4223-8ac9-6d6ece8ef3fc",
+              "leftValue": "={{$items(\"Validate Request\")[0].json.options.postToSlack}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "ad499a1e-1a25-4672-83fb-e0586b566954",
+              "leftValue": "={{ ($items(\"Validate Request\")[0].json.options.slackChannel || \"\").trim() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4448,
+        -720
+      ],
+      "id": "1f0ccca0-b69b-44fc-b95b-67f890c20968",
+      "name": "IF: postToSlack?"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "=channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0A7TTJ07PC",
+          "mode": "list",
+          "cachedResultName": "n8n-talk"
+        },
+        "user": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "text": "=*🚀 New Release Notes*\nRepo: {{$json.releaseNotesJson.repo}}\nFrom: {{$json.releaseNotesJson.fromTag}} → To: {{$json.releaseNotesJson.toTag}}\n\n{{$json.releaseNotesMarkdown}}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        4736,
+        -880
+      ],
+      "id": "93845115-b818-4551-99a8-c5041fe4b333",
+      "name": "Send a message",
+      "webhookId": "a9f37fc0-6e13-4bc0-9404-a1482dd15689",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "jvruq0be0YNLsgWy",
+          "name": "Slack account 7"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cbe4d92a-aee8-4fe3-a33d-a44795604d5c",
+              "name": "options",
+              "value": "={{$items(\"Validate Request\")[0].json.options}}",
+              "type": "object"
+            },
+            {
+              "id": "5426197a-3b1d-43b4-b512-2ff831297968",
+              "name": "postToSlack",
+              "value": "={{$items(\"Validate Request\")[0].json.options?.postToSlack === true}}",
+              "type": "boolean"
+            },
+            {
+              "id": "f84955a2-dc8a-4520-b58e-5411809afa38",
+              "name": "",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3920,
+        -560
+      ],
+      "id": "63955677-f28c-482e-9bbf-bcfde89dc457",
+      "name": "Attach Options"
+    },
+    {
+      "parameters": {
+        "toolDescription": "You can call GitHub REST API using paths relative to https://api.github.com.\n\nAllowed paths:\n\n/repos/{owner}/{repo}/pulls/{number}\n\n/repos/{owner}/{repo}/issues/{number}\n\n/repos/{owner}/{repo}/compare/{from}...{to}\n\nUse GET only.\n\nReturn the raw JSON.",
+        "url": "https://api.github.com",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.3,
+      "position": [
+        3552,
+        -720
+      ],
+      "id": "0556cd13-5961-4b46-b5f9-f29e81be8b4b",
+      "name": "GitHub API Tool",
+      "credentials": {
+        "githubApi": {
+          "id": "8880IBLGmSZPJesF",
+          "name": "GitHub account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "00d37fea-271f-4dc3-a60a-8227ec37811b",
+              "name": "repo",
+              "value": "={{$json.repo}}",
+              "type": "string"
+            },
+            {
+              "id": "04704309-ddfb-4480-b6d8-0f63168dce0e",
+              "name": "fromTag",
+              "value": "={{$items(\"Validate Request\")[0].json.fromTag}}",
+              "type": "string"
+            },
+            {
+              "id": "f03fd32b-4ded-43ce-8420-cec792905c79",
+              "name": "toTag",
+              "value": "={{$items(\"Validate Request\")[0].json.toTag}}",
+              "type": "string"
+            },
+            {
+              "id": "bb68e65d-2a79-4cc2-8a87-94c00bf73c98",
+              "name": "githubIssueDetails",
+              "value": "={{$json.githubIssueDetails || []}}",
+              "type": "array"
+            },
+            {
+              "id": "13c41819-f8d5-4abd-963d-34f2e4fd74b1",
+              "name": "jiraIssues",
+              "value": "={{$json.jiraIssues || []}}",
+              "type": "array"
+            },
+            {
+              "id": "5d93db4b-09f0-4bb7-ad1c-ce200a270d9b",
+              "name": "options",
+              "value": "={{ $items(\"Validate Request\")[0].json.options || {} }}",
+              "type": "object"
+            },
+            {
+              "id": "65c815bf-6136-49b2-a93b-90a6277d68db",
+              "name": "compareUrl",
+              "value": "={{$json.compareUrl || $json.compareURL || null}}",
+              "type": "string"
+            },
+            {
+              "id": "fbd8c875-e4e3-492e-aa6f-60303ab2ad08",
+              "name": "prs",
+              "value": "={{$json.prs || []}}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3232,
+        -1008
+      ],
+      "id": "0c8a9ff7-df3d-453c-8112-d4fe2a0016ce",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9b561a5b-0170-4e80-9c91-718a0e0ca3b2",
+              "leftValue": "={{$items(\"Validate Request\")[0].json.options.jira.enabled}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        784,
+        -400
+      ],
+      "id": "9bf21a81-5439-4abd-bd18-e73a805164b2",
+      "name": "IF-Jira Enabled?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "90d25f5d-0426-4e95-b61c-d8156eb0d19b",
+              "name": "jiraIssues",
+              "value": "[]",
+              "type": "array"
+            },
+            {
+              "id": "7dc68fdb-5917-4edc-bdc1-fedabcaa06da",
+              "name": "jiraLookupSkipped",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "7922b1ef-1544-4ba6-bde0-8e9c2ed5a503",
+              "name": "jiraSkipReason",
+              "value": "disabled",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1072,
+        -160
+      ],
+      "id": "7c659b45-f22d-493c-8b5a-e354844e2c88",
+      "name": "Set -Jira Skipped (Disabled)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e04163aa-4f19-4d79-ad59-42f81254cc2a",
+              "name": "ok",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "735e4451-a6a8-4b45-a359-9a672ae3cf1f",
+              "name": "repo",
+              "value": "={{$json.releaseNotesJson.repo}}",
+              "type": "string"
+            },
+            {
+              "id": "92b094bf-ca51-4007-92f2-f2dad191db83",
+              "name": "fromTag",
+              "value": "={{$json.releaseNotesJson.fromTag}}",
+              "type": "string"
+            },
+            {
+              "id": "2ede308a-1be2-40da-8023-7ca834de48a0",
+              "name": "toTag",
+              "value": "={{$json.releaseNotesJson.toTag}}",
+              "type": "string"
+            },
+            {
+              "id": "59d36f4c-8bc0-4c09-ada0-19fc49716df5",
+              "name": "releaseNotesMarkdown",
+              "value": "={{$json.releaseNotesMarkdown}}",
+              "type": "string"
+            },
+            {
+              "id": "ea98de7f-8140-43c8-b29c-5dbb4ddea8b2",
+              "name": "releaseNotesJson",
+              "value": "={{$json.releaseNotesJson}}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4144,
+        -464
+      ],
+      "id": "0b00ade8-bb69-473f-9538-ed5ea4b96b4c",
+      "name": "Set - Webhook Response Payload"
+    },
+    {
+      "parameters": {
+        "content": "Webhook\nToimii työnkulun aloituspisteenä ja vastaanottaa HTTP POST -pyynnön, joka sisältää repo- ja tagitiedot sekä lisäasetukset.",
+        "height": 112
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1168,
+        -608
+      ],
+      "typeVersion": 1,
+      "id": "9cbe1f8c-278b-4b14-88e6-661df342d83d",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "Parse Compare Output\nNormalisoi compare-datan ja poimii commitit, PR:t ja ticketit.",
+        "height": 80
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -96,
+        -880
+      ],
+      "typeVersion": 1,
+      "id": "e4f2b6ce-e822-415e-9664-6385949a7bea",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "Split Commits\nPilkkkoo commit-listan yksittäisiksi itemeiksi, jotta ne voidaan käsitellä silmukassa.",
+        "height": 96
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        192,
+        -928
+      ],
+      "typeVersion": 1,
+      "id": "d18a74a7-be05-4d10-9ac2-83ae8bc9974b",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "Get PRs For Commit\nHakee GitHubista kaikki pull requestit, joihin yksittäinen commit kuuluu.",
+        "height": 112,
+        "width": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        480,
+        -928
+      ],
+      "typeVersion": 1,
+      "id": "02eb965d-be38-4c08-bc81-f848d998c0c0",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "Merge Associated PRs\nYhdistää commit-kohtaisista hauista saadut PR-numerot yhdeksi listaksi.",
+        "height": 112,
+        "width": 208
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        704,
+        -912
+      ],
+      "typeVersion": 1,
+      "id": "a88b4d7b-9ed1-4aa4-bdd3-b2c5fea356c2",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "Validate Request\nTarkistaa pakolliset kentät, normalisoi eri muotoiset asetukset ja palauttaa yhtenäisen rakenteen jatkokäsittelyä varten.",
+        "height": 128,
+        "width": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -752,
+        -816
+      ],
+      "typeVersion": 1,
+      "id": "b0e68ecb-e0e9-4a3a-8228-d1096d6fae4a",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "Extract PR Numbers\nLuo yhden itemin per PR yksityiskohtien hakua varten.",
+        "height": 128,
+        "width": 160
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        944,
+        -928
+      ],
+      "typeVersion": 1,
+      "id": "06dce691-6d01-4fcd-acf0-89f255c9e3e3",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "content": "HTTP Request1 (PR Details)\nHakee yksittäisen pull requestin täydet tiedot.",
+        "height": 112,
+        "width": 160
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1136,
+        -928
+      ],
+      "typeVersion": 1,
+      "id": "5097b1f5-ae97-43a0-b221-6bc7bafdf162",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "content": "Normalize PR Data\nMuuttaa PR-datan yhtenäiseen ja siistiin muotoon.",
+        "height": 96,
+        "width": 176
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1456,
+        -800
+      ],
+      "typeVersion": 1,
+      "id": "6009f17d-fc94-4316-bb1d-74a16eac8a74",
+      "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "content": "Filter PRs\nSuodattaa botit ja release-/changelog-PR:t pois",
+        "height": 80,
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -112,
+        -304
+      ],
+      "typeVersion": 1,
+      "id": "c7dc08b5-a4a5-4347-b765-b751493b5e5b",
+      "name": "Sticky Note9"
+    },
+    {
+      "parameters": {
+        "content": "Extract Ticket IDs\nPoimii Jira-avaimet ja GitHub issue -viitteet PR:istä.",
+        "height": 96,
+        "width": 176
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        224,
+        -272
+      ],
+      "typeVersion": 1,
+      "id": "1e4539f9-ad52-4e0f-9179-5bd75d0c5524",
+      "name": "Sticky Note10"
+    },
+    {
+      "parameters": {
+        "content": "Prepare Ticket Lookups\nValmistelee uniikit Jira- ja GitHub issue -hakut",
+        "height": 80,
+        "width": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        480,
+        -272
+      ],
+      "typeVersion": 1,
+      "id": "d61e822a-2774-4ac0-9416-a7f01f891586",
+      "name": "Sticky Note11"
+    },
+    {
+      "parameters": {
+        "content": "IF-Jira Enabled?\nTarkistaa onko Jira-rikastus käytössä",
+        "height": 96,
+        "width": 160
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        720,
+        -272
+      ],
+      "typeVersion": 1,
+      "id": "94530972-4df5-4657-bad0-ba79ca59c21b",
+      "name": "Sticky Note12"
+    },
+    {
+      "parameters": {
+        "content": "Set-Jira Skipped (Disabled)\nOhittaa Jira-haun, jos se ei ole käytössä.",
+        "height": 80
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        976,
+        0
+      ],
+      "typeVersion": 1,
+      "id": "8b1642f3-1269-44a4-a80b-1f1f9aff9038",
+      "name": "Sticky Note13"
+    },
+    {
+      "parameters": {
+        "content": "Split Jira Tickets\nLuo yhden itemin per Jira-ticket hakua varten.",
+        "height": 80,
+        "width": 176
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1008,
+        -384
+      ],
+      "typeVersion": 1,
+      "id": "c0438da0-38fc-45fc-b987-d42e4034dee5",
+      "name": "Sticky Note14"
+    },
+    {
+      "parameters": {
+        "content": "Set Jira Key\nVarmistaa yhtenäisen Jira-key-kentän.",
+        "height": 80,
+        "width": 176
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1248,
+        -352
+      ],
+      "typeVersion": 1,
+      "id": "d2cd0b5f-b566-40f6-aa02-112add17e449",
+      "name": "Sticky Note15"
+    },
+    {
+      "parameters": {
+        "content": "IF: jiraLookupSkipped?\nOhjaa skipatut ja sallitut Jira-haut eri polkuihin.",
+        "height": 80
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1632,
+        -1088
+      ],
+      "typeVersion": 1,
+      "id": "ba89908d-4078-4ec4-baf8-40f83dfaeeda",
+      "name": "Sticky Note16"
+    },
+    {
+      "parameters": {
+        "content": "Normalize Jira Issue\nNormalisoi Jira-issuen tiedot yhdenmukaiseen muotoon.",
+        "height": 112,
+        "width": 176
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1936,
+        -544
+      ],
+      "typeVersion": 1,
+      "id": "4fb4ccd3-014e-44bd-b4ad-19b9149ef099",
+      "name": "Sticky Note17"
+    },
+    {
+      "parameters": {
+        "content": "Merge GitHub Issue Details Back\nYhdistää issue-detaljit PR:iin ja lisää varoitukset puuttuvista tiedoista.",
+        "height": 128,
+        "width": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2912,
+        -1120
+      ],
+      "typeVersion": 1,
+      "id": "64643d31-da21-4b91-9943-98c79fc85dc0",
+      "name": "Sticky Note18"
+    },
+    {
+      "parameters": {
+        "content": "Tuottaa rakenteelliset release notet ilman hallusinaatioita.",
+        "height": 80,
+        "width": 224
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        3456,
+        -1040
+      ],
+      "typeVersion": 1,
+      "id": "7f22fabc-f2f9-4fdb-9d43-0b1708fa48ab",
+      "name": "Sticky Note19"
+    },
+    {
+      "parameters": {
+        "content": "GitHub API Tool\nMahdollistaa agentille rajatut GitHub API -kutsut.",
+        "height": 96,
+        "width": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        3712,
+        -752
+      ],
+      "typeVersion": 1,
+      "id": "0199c49c-dba6-4a9a-8cf0-92d4bffb6bc9",
+      "name": "Sticky Note20"
+    },
+    {
+      "parameters": {
+        "content": "Parse Agent JSON\nVarmistaa, että agentin vastaus on validia JSON-muotoa.",
+        "height": 80
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        3504,
+        -432
+      ],
+      "typeVersion": 1,
+      "id": "d70aa6f4-c9e9-40dd-8fb2-b73c3166f119",
+      "name": "Sticky Note21"
+    },
+    {
+      "parameters": {
+        "content": "Attach Options\nLiittää alkuperäiset konfiguraatiot takaisin lopputulokseen.",
+        "height": 96,
+        "width": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        3840,
+        -416
+      ],
+      "typeVersion": 1,
+      "id": "2ce1ed96-c0ed-4b53-b26d-526ad6a378e1",
+      "name": "Sticky Note22"
+    },
+    {
+      "parameters": {
+        "content": "Send a message\nLähettää release notet Slack-kanavaan.",
+        "height": 80,
+        "width": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        4704,
+        -752
+      ],
+      "typeVersion": 1,
+      "id": "7b541887-2cfb-4e03-8ee2-e5085d11190a",
+      "name": "Sticky Note23"
+    },
+    {
+      "parameters": {
+        "content": "Get GitHub Issue\nHakee GitHub issue -tiedot turvallisesti APIsta.",
+        "height": 112,
+        "width": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2592,
+        -160
+      ],
+      "typeVersion": 1,
+      "id": "04e4fa90-0a38-44c4-b359-923da434b9c1",
+      "name": "Sticky Note24"
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "n8workflow.app.n8n.cloud",
+            "user-agent": "curl/8.7.1",
+            "content-length": "215",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "87.100.129.145",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "FI",
+            "cf-ray": "9bd795cc715930b4-ARN",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "x-forwarded-for": "87.100.129.145, 104.23.223.20",
+            "x-forwarded-host": "n8workflow.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-75-7cf7798779-pjmxn",
+            "x-is-trusted": "yes",
+            "x-real-ip": "87.100.129.145"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "repo": "googleapis/release-please",
+            "fromTag": "v17.0.0",
+            "toTag": "v17.1.0",
+            "options": {
+              "postToSlack": true,
+              "slackChannel": "C0123456789",
+              "jira": {
+                "enabled": false
+              }
+            }
+          },
+          "webhookUrl": "https://n8workflow.app.n8n.cloud/webhook/cb19742f-6a6e-4da0-8f27-5907305d61c0",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Request": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Parse Compare Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Compare Output": {
+      "main": [
+        [
+          {
+            "node": "Split Commits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PR Numbers": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Normalize PR Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize PR Data": {
+      "main": [
+        [
+          {
+            "node": "Filter PRs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter PRs": {
+      "main": [
+        [
+          {
+            "node": "Extract Ticket IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Ticket IDs": {
+      "main": [
+        [
+          {
+            "node": "Prepare Ticket Lookups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Ticket Lookups": {
+      "main": [
+        [
+          {
+            "node": "IF-Jira Enabled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split GitHub Issues": {
+      "main": [
+        [
+          {
+            "node": "Filter GitHub Issue Number",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get GitHub Issue": {
+      "main": [
+        [
+          {
+            "node": "Merge GitHub Issue Details Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge GitHub Issue Details Back": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Release Notes (AI Agent)": {
+      "main": [
+        [
+          {
+            "node": "Parse Agent JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Release Notes (AI Agent)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Agent JSON": {
+      "main": [
+        [
+          {
+            "node": "Attach Options",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Commits": {
+      "main": [
+        [
+          {
+            "node": "Get PRs For Commit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get PRs For Commit": {
+      "main": [
+        [
+          {
+            "node": "Merge Associated PRs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Associated PRs": {
+      "main": [
+        [
+          {
+            "node": "Extract PR Numbers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Jira Tickets": {
+      "main": [
+        [
+          {
+            "node": "Set Jira Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Jira Issue1": {
+      "main": [
+        [
+          {
+            "node": "Normalize Jira Issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Jira Issues Back": {
+      "main": [
+        [
+          {
+            "node": "Split GitHub Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Jira Issue": {
+      "main": [
+        [
+          {
+            "node": "Collect Jira Issues Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Jira Keys": {
+      "main": [
+        [
+          {
+            "node": "IF: jiraLookupSkipped?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Jira Key": {
+      "main": [
+        [
+          {
+            "node": "Filter Jira Keys",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: jiraLookupSkipped?": {
+      "main": [
+        [
+          {
+            "node": "Collect Jira Issues Back",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Jira Issue1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter GitHub Issue Number": {
+      "main": [
+        [
+          {
+            "node": "If:githubIssueLookupSkipped?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If:githubIssueLookupSkipped?": {
+      "main": [
+        [
+          {
+            "node": "Merge GitHub Issue Details Back",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get GitHub Issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: postToSlack?": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Send a message": {
+      "main": [
+        []
+      ]
+    },
+    "Attach Options": {
+      "main": [
+        [
+          {
+            "node": "Set - Webhook Response Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub API Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Generate Release Notes (AI Agent)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Generate Release Notes (AI Agent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF-Jira Enabled?": {
+      "main": [
+        [
+          {
+            "node": "Split Jira Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set -Jira Skipped (Disabled)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set -Jira Skipped (Disabled)": {
+      "main": [
+        [
+          {
+            "node": "Split GitHub Issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Webhook Response Payload": {
+      "main": [
+        [
+          {
+            "node": "IF: postToSlack?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "4e3ea06e-bd04-4ab3-b646-f0746c6d425a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "4784b6630819dc7dc9b11bd92c38955269c9cd3c8cec78f70f71546c7d4973ee"
+  },
+  "id": "jYIlTU70uhLZyEfV",
+  "tags": []
+}
